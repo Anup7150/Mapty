@@ -1,6 +1,5 @@
 'use strict';
 
-const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const form = document.querySelector('.form');
 const containerWorkouts = document.querySelector('.workouts');
@@ -26,16 +25,28 @@ class Workout {
     this.distance = distance; // in km
     this.duration = duration; // in min
   }
+  // we will create a method to set the description of the workout
+  _setDescription() {
 
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    // we are using the getMonth method on the date object to get the month and we are using the months array to get the month name
+    // since the getMonth method will return a number from 0 to 11 based on the time of the year
+    // we need the output as like Running on April 14
+    this.description = `${this.type[0].toUpperCase()}${this.type.slice(1)} on ${months[this.date.getMonth()]} ${this.date.getDate()}`;
+
+
+  }
 }
 
 class Running extends Workout {
+  type = 'running';
   constructor(coords, distance, duration, cadence) {
     // we are calling the constructor function of the parent class by using the super keyword with the arguments that we want to pass in
     // the super keyword generates the this keyword
     super(coords, distance, duration);
     this.cadence = cadence;
     this.calcPace();
+    this._setDescription();
   }
 
   // we will create a method to calculate the pace of the workout
@@ -49,12 +60,14 @@ class Running extends Workout {
 }
 
 class Cycling extends Workout {
+  type = 'cycling';
   constructor(coords, distance, duration, elevationGain) {
     // we are calling the constructor function of the parent class by using the super keyword with the arguments that we want to pass in
     // the super keyword generates the this keyword
     super(coords, distance, duration);
     this.elevationGainee = elevationGain;
     this.calcSpeed();
+    this._setDescription();
   }
 
   // we will create a method to calculate the speed of the workout
@@ -88,13 +101,24 @@ class Cycling extends Workout {
 class App {
   #map;
   #mapEvent;
+  #mapZoomLevel = 13;
   // it will store the workouts that we create
   #workouts = [];
   constructor() {
     // this here refers to the object that is created by the App class
+    // get the user's position
     this._getPosition();
+
+    // get data from local storage
+    // we want this method to be called as soon as the page loads
+    this._getLocalStorage();
+
+    // handle the event listeners
     form.addEventListener('submit', this._newWorkout.bind(this));
     inputType.addEventListener('change', this._toggleElevationField.bind(this));
+    // we will add the event listener to the containerWorkouts element because we want to listen to the click event on the workout element
+    // and the workout element is the child element of the containerWorkouts element
+    containerWorkouts.addEventListener('click', this._moveToPopup.bind(this));
   }
 
   _getPosition() {
@@ -114,7 +138,7 @@ class App {
     // console.log(position);
     const { latitude } = position.coords;
     const { longitude } = position.coords;
-    console.log(`https://www.google.com/maps/@${latitude},${longitude}`);
+    // console.log(`https://www.google.com/maps/@${latitude},${longitude}`);
 
     const coords = [latitude, longitude];
 
@@ -126,7 +150,7 @@ class App {
     // we are storing the map object in the map variable because we will be using different methods on that object later on
     // we will use this.#map to define the property to the created object
     console.log(this);
-    this.#map = L.map('map').setView(coords, 13);
+    this.#map = L.map('map').setView(coords, this.#mapZoomLevel);
 
     L.tileLayer('https://tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -140,12 +164,39 @@ class App {
     // the e object contains the information about the event
     this.#map.on('click', this._showForm.bind(this));
 
+    // here we will call the _renderWorkoutMarker method on each workout because we want to display the marker on the map as soon as it is loaded
+    this.#workouts.forEach(work => {
+      this._renderWorkoutMarker(work);
+      // we will call the _renderWorkoutMarker method on each workout
+      // this._renderWorkoutMarker(work); it will not work because we are calling the _renderWorkoutMarker method before the map is loaded
+      // console.log(work);
+
+    })
+
   };
   _showForm(mapE) {
     this.#mapEvent = mapE;
     form.classList.remove('hidden');
     inputDistance.focus();
   };
+
+
+  _hideForm() {
+    // empty the input fields
+    inputDistance.value = inputDuration.value = inputCadence.value = inputElevation.value = '';
+    // hide the form
+    // in the code below we are first hiding the form by adding the hidden class to the form element
+    // but also we need to make sure not to show the animation when we hide the form
+    // for that we have changed the display property of the form to none and then we are adding the hidden class to the form element
+    // and then we need to make sure to show the form again after 1 second so that we can show the animation when we show the form again
+    // or when we show the form when the user clicks on the map that is why we are using the setTimeout method to set the display property of the form to grid after 1 second
+
+    form.style.display = 'none';
+    form.classList.add('hidden');
+    setTimeout(() => {
+      form.style.display = 'grid';
+    }, 1000);
+  }
 
   _toggleElevationField() {
     // we will basically change the placeholder and the label of the input fields based on the type of workout
@@ -196,7 +247,7 @@ class App {
       workout = new Running([lat, lng], distance, duration, cadence);
       // now we will push the object into the workouts array
       this.#workouts.push(workout);
-      // console.log(workout);
+      // console.log(this.#workouts);
     }
 
 
@@ -217,26 +268,154 @@ class App {
 
 
     // clear input fields
-    inputDistance.value = inputDuration.value = inputCadence.value = inputElevation.value = '';
+    // creating a method to hide the form when user submits the form
+    this._hideForm();
+
 
     // the thing is we dont have access anymore to the variable called mapE and map because they are not in the scope of this function
     // they are in the scope of the callback function of the getCurrentPosition method
     // console.log(mapEvent);
 
     // displaying the marker on the map
+    this._renderWorkoutMarker(workout);
+    this._renderWorkout(workout);
 
-    L.marker([lat, lng]).addTo(this.#map)
+
+    // we will create a method to store the workouts in the local storage
+    this._setLocalStorage();
+
+  }
+
+  // workout parameter will be the object that we created in the _newWorkout function
+  _renderWorkoutMarker(workout) {
+    // here we need to pass the lat lng that we get from the workout object
+
+    L.marker(workout.coords).addTo(this.#map)
       .bindPopup(L.popup({
         maxWidth: 250,
         minWidth: 100,
         autoClose: false,
         closeOnClick: false,
-        className: 'running-popup'
+        className: `${workout.type}-popup`
       }))
-      .setPopupContent('Workout')
+      .setPopupContent(`${workout.type === 'running' ? '🏃‍♂️' : '🚴'} ${workout.description}`)
       .openPopup();
+
+  }
+
+  _renderWorkout(workout) {
+    let html = `<li class="workout workout--${workout.type}" data-id="${workout.id}">
+    <h2 class="workout__title">${workout.description}</h2>
+    <div class="workout__details">
+      <span class="workout__icon">${workout.type === "running" ? "🏃‍♂️" : "🚴"}</span>
+      <span class="workout__value">${workout.distance}</span>
+      <span class="workout__unit">km</span>
+    </div>
+    <div class="workout__details">
+      <span class="workout__icon">⏱</span>
+      <span class="workout__value">${workout.duration}</span>
+      <span class="workout__unit">min</span>
+    </div>`
+
+
+    if (workout.type === 'running') {
+      html += ` <div class="workout__details">
+      <span class="workout__icon">⚡️</span>
+      <span class="workout__value">${workout.pace.toFixed(1)}</span>
+      <span class="workout__unit">min/km</span>
+    </div>
+    <div class="workout__details">
+      <span class="workout__icon">🦶🏼</span>
+      <span class="workout__value">${workout.cadence}</span>
+      <span class="workout__unit">spm</span>
+    </div>`
+    }
+
+    if (workout.type === 'cycling') {
+      html += `<div class="workout__details">
+      <span class="workout__icon">⚡️</span>
+      <span class="workout__value">${workout.speed.toFixed(1)}</span>
+      <span class="workout__unit">km/h</span>
+    </div>
+    <div class="workout__details">
+      <span class="workout__icon">⛰</span>
+      <span class="workout__value">${workout.elevationGainee}</span>
+      <span class="workout__unit">m</span>
+    </div>`
+    }
+
+    // here we are inserting the html as the sibling of the form element
+    form.insertAdjacentHTML("afterend", html);
+  }
+
+  _moveToPopup(e) {
+    // console.log(e.target);
+    // we will use the closest method to get the parent element of the workout element
+    const workoutEl = e.target.closest('.workout');
+    console.log(workoutEl);
+    // we can still listen the click on the workout element when dont have any element and returns null
+    // we need to guard and return the function if the workoutEl is null
+    if (!workoutEl) return;
+
+    // now we will use the id of the workout in the workout element to find the workout object in the workouts array
+    const workout = this.#workouts.find(work => work.id === workoutEl.dataset.id);
+    console.log(workout);
+    // now we will render the workout on the map by using the leaflet library method called setView
+    // the first argument is the coordinates of the workout and the second argument is the zoom level
+    this.#map.setView(workout.coords, this.#mapZoomLevel, {
+      animate: true,
+      pan: {
+        duration: 1
+      }
+    })
+  }
+
+  // we will create a method to store the workouts in the local storage
+  // to store the workouts in the local storage we will use the local storage API
+  // the local storage is the API that is available in the browser and it allows us to store data in the browser
+  // the local storage API is key value pair and the value can only be a string
+  // we will use the setItem method to store the data in the local storage
+  // the first argument is the key and the second argument is the value
+  // we will use the JSON.stringify method to convert the workouts array to string
+  // we will use the JSON.parse method to convert the string back to array
+  _setLocalStorage() {
+    localStorage.setItem('workout', JSON.stringify(this.#workouts));
+  }
+
+  // we will create a method to get the data from the local storage
+  // we will use the getItem method to get the data from the local storage
+  // the getItem method will return the data as a string
+  // we will use the JSON.parse method to convert the string back to array
+  // we will store the data in the workouts array as the workouts array is empty when the page loads
+  _getLocalStorage() {
+    // we are using the key called workout to get the data from the local storage
+    const data = JSON.parse(localStorage.getItem('workout'));
+    // if there is no data in the local storage then we will return the function by using the guard clause
+    if (!data) return;
+    this.#workouts = data;
+
+    // now since we have the data back from the local storage we need to render the workouts on the map
+    // we will loop over the workouts array and call the _renderWorkoutMarker method on each workout
+
+    this.#workouts.forEach(work => {
+      this._renderWorkout(work);
+      // we will call the _renderWorkoutMarker method on each workout
+      // this._renderWorkoutMarker(work); it will not work because we are calling the _renderWorkoutMarker method before the map is loaded
+      // console.log(work);
+
+    })
+  }
+
+  // we will create a method to reset the local storage
+  // we will use the removeItem method to remove the data from the local storage
+  _resetLocalStorage() {
+    localStorage.removeItem('workout');
+    // we will reload the page so that the workouts are removed from the page
+    // location is a global object that is avaiable in the browser and it contains the information about the current url
+    location.reload();
   }
 };
+
 
 // we need to create an object so that the app class is instantiated and the constructor function is called
 
